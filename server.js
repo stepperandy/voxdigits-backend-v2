@@ -16,7 +16,6 @@ const {
   FRONTEND_URL,
 } = process.env;
 
-// ---------- Basic checks ----------
 function requireEnv(name, value) {
   if (!value) {
     console.error(Missing required environment variable: ${name});
@@ -30,17 +29,16 @@ requireEnv("TWILIO_API_SECRET", TWILIO_API_SECRET);
 requireEnv("TWIML_APP_SID", TWIML_APP_SID);
 requireEnv("TWILIO_CALLER_ID", TWILIO_CALLER_ID);
 
-// ---------- Middleware ----------
-const corsOptions = {
-  origin: FRONTEND_URL === "*" ? true : [FRONTEND_URL],
-  credentials: true,
-};
+app.use(
+  cors({
+    origin: FRONTEND_URL === "*" ? true : FRONTEND_URL,
+    credentials: true,
+  })
+);
 
-app.use(cors(corsOptions));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-// ---------- Health check ----------
 app.get("/", (req, res) => {
   res.json({
     ok: true,
@@ -48,7 +46,6 @@ app.get("/", (req, res) => {
   });
 });
 
-// ---------- Token generator ----------
 app.get("/generateToken", (req, res) => {
   try {
     const identity = req.query.identity || "voxdigits_user";
@@ -76,89 +73,59 @@ app.get("/generateToken", (req, res) => {
       token: token.toJwt(),
     });
   } catch (error) {
-    console.error("Token generation error:", error);
+    console.error("Token error:", error);
     res.status(500).json({
       ok: false,
-      error: "Failed to generate token",
-      details: error.message,
+      error: "Token generation failed",
     });
   }
 });
 
-// ---------- Outbound calling webhook ----------
-// Twilio TwiML App Voice URL should point here: /voice
 app.post("/voice", (req, res) => {
   try {
-    console.log("Outbound /voice hit");
-    console.log("Request body:", req.body);
-
     const to = req.body.To || req.body.to;
     const twiml = new twilio.twiml.VoiceResponse();
 
     if (!to) {
-      twiml.say("No destination number was provided.");
+      twiml.say("No number provided");
       return res.type("text/xml").send(twiml.toString());
     }
 
     const dial = twiml.dial({
       callerId: TWILIO_CALLER_ID,
       answerOnBridge: true,
-      timeout: 30,
     });
 
-    dial.number(
-      {
-        statusCallback: "/status",
-        statusCallbackEvent: ["initiated", "ringing", "answered", "completed"],
-        statusCallbackMethod: "POST",
-      },
-      String(to).trim()
-    );
+    dial.number(to);
 
-    return res.type("text/xml").send(twiml.toString());
+    res.type("text/xml").send(twiml.toString());
   } catch (error) {
-    console.error("Voice webhook error:", error);
-
+    console.error("Voice error:", error);
     const twiml = new twilio.twiml.VoiceResponse();
-    twiml.say("Application error. Please try again later.");
-    return res.type("text/xml").send(twiml.toString());
+    twiml.say("Application error");
+    res.type("text/xml").send(twiml.toString());
   }
 });
 
-// ---------- Inbound calling webhook ----------
-// Twilio phone number Voice webhook should point here: /incoming
 app.post("/incoming", (req, res) => {
   try {
-    console.log("Inbound /incoming hit");
-    console.log("Request body:", req.body);
-
     const twiml = new twilio.twiml.VoiceResponse();
-
-    const dial = twiml.dial({
-      answerOnBridge: true,
-      timeout: 20,
-    });
-
-    // This must match the identity used when generating token
+    const dial = twiml.dial();
     dial.client("voxdigits_user");
-
-    return res.type("text/xml").send(twiml.toString());
+    res.type("text/xml").send(twiml.toString());
   } catch (error) {
-    console.error("Incoming webhook error:", error);
-
+    console.error("Incoming error:", error);
     const twiml = new twilio.twiml.VoiceResponse();
-    twiml.say("Unable to connect your call right now.");
-    return res.type("text/xml").send(twiml.toString());
+    twiml.say("Cannot connect call");
+    res.type("text/xml").send(twiml.toString());
   }
 });
 
-// ---------- Call status callback ----------
 app.post("/status", (req, res) => {
   console.log("Call status:", req.body);
-  return res.sendStatus(200);
+  res.sendStatus(200);
 });
 
-// ---------- 404 ----------
 app.use((req, res) => {
   res.status(404).json({
     ok: false,
@@ -166,16 +133,6 @@ app.use((req, res) => {
   });
 });
 
-// ---------- Error handler ----------
-app.use((err, req, res, next) => {
-  console.error("Unhandled server error:", err);
-  res.status(500).json({
-    ok: false,
-    error: "Internal server error",
-  });
-});
-
-// ---------- Start server ----------
 app.listen(PORT, "0.0.0.0", () => {
   console.log(VoxDigits backend running on port ${PORT});
 });
