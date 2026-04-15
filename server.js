@@ -1,28 +1,23 @@
 const express = require("express");
 const cors = require("cors");
-const axios = require("axios");
 const twilio = require("twilio");
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-const PORT = process.env.PORT || 3000;
-const AIRALO_BASE_URL = "https://partners-api.airalo.com";
 
 const {
   TWILIO_ACCOUNT_SID,
   TWILIO_API_KEY,
   TWILIO_API_SECRET,
   TWIML_APP_SID,
-  TWILIO_CALLER_ID,
-  AIRALO_CLIENT_ID,
-  AIRALO_CLIENT_SECRET
+  TWILIO_CALLER_ID
 } = process.env;
 
 app.get("/", (req, res) => {
-  res.json({ ok: true, message: "VoxDigits backend is live" });
+  res.send("VoxDigits Twilio backend is live");
 });
 
 app.get("/generateToken", (req, res) => {
@@ -67,33 +62,7 @@ app.post("/voice", (req, res) => {
   }
 });
 
-app.get("/airalo/token-test", async (req, res) => {
-  try {
-    const body = new URLSearchParams();
-    body.append("client_id", AIRALO_CLIENT_ID);
-    body.append("client_secret", AIRALO_CLIENT_SECRET);
-    body.append("grant_type", "client_credentials");
-
-    const response = await axios.post(
-      ${AIRALO_BASE_URL}/v2/token,
-      body.toString(),
-      {
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded"
-        }
-      }
-    );
-
-    res.json({ ok: true, data: response.data });
-  } catch (err) {
-    res.status(500).json({
-      ok: false,
-      error: err.response?.data || err.message
-    });
-  }
-});
-
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(Server running on port ${PORT});
 });
