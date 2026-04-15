@@ -1,17 +1,13 @@
 {
   "name": "voxdigits-backend-v2",
   "version": "1.0.0",
-  "private": true,
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "twilio": "^5.5.3"
-  },
-  "engines": {
-    "node": "20.x"
+    "express": "^4.19.2",
+    "twilio": "^4.23.0"
   }
 }
