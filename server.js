@@ -6,91 +6,76 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: true }));
+
+const {
+  TWILIO_ACCOUNT_SID,
+  TWILIO_API_KEY,
+  TWILIO_API_SECRET,
+  TWIML_APP_SID,
+  TWILIO_CALLER_ID
+} = process.env;
 
 app.get("/", (req, res) => {
-  res.send("VOXDIGITS RENDER BACKEND OK");
+  res.send("VoxDigits backend is LIVE");
 });
 
-app.get("/health", (req, res) => {
-  res.json({ ok: true });
-});
-
-function buildTokenResponse(req, res) {
+app.get("/generateToken", (req, res) => {
   try {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const apiKey = process.env.TWILIO_API_KEY;
-    const apiSecret = process.env.TWILIO_API_SECRET;
-    const appSid = process.env.TWIML_APP_SID;
-
-    if (!accountSid) {
-      return res.status(500).json({ error: "Missing TWILIO_ACCOUNT_SID" });
-    }
-    if (!apiKey) {
-      return res.status(500).json({ error: "Missing TWILIO_API_KEY" });
-    }
-    if (!apiSecret) {
-      return res.status(500).json({ error: "Missing TWILIO_API_SECRET" });
-    }
-    if (!appSid) {
-      return res.status(500).json({ error: "Missing TWIML_APP_SID" });
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY || !TWILIO_API_SECRET || !TWIML_APP_SID) {
+      return res.status(500).json({
+        error: "Missing Twilio environment variables"
+      });
     }
 
     const AccessToken = twilio.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
-    const identity = req.query.identity || req.query.user || "voxdigits_user";
-
-    const token = new AccessToken(accountSid, apiKey, apiSecret, {
-      identity,
-    });
+    const token = new AccessToken(
+      TWILIO_ACCOUNT_SID,
+      TWILIO_API_KEY,
+      TWILIO_API_SECRET,
+      { identity: "user_" + Date.now() }
+    );
 
     const voiceGrant = new VoiceGrant({
-      outgoingApplicationSid: appSid,
-      incomingAllow: true,
+      outgoingApplicationSid: TWIML_APP_SID,
+      incomingAllow: true
     });
 
     token.addGrant(voiceGrant);
 
-    return res.json({
-      identity,
-      token: token.toJwt(),
-    });
-  } catch (err) {
-    console.error("TOKEN ERROR:", err);
-    return res.status(500).json({
-      error: err.message || "Token generation failed",
-    });
+    res.json({ token: token.toJwt() });
+  } catch (error) {
+    console.error("Token error:", error);
+    res.status(500).json({ error: error.message });
   }
-}
+});
 
-app.get("/generateToken", buildTokenResponse);
-app.get("/api/twilio/token", buildTokenResponse);
-
-app.post("/api/twilio/voice", (req, res) => {
+app.post("/voice", (req, res) => {
   try {
     const VoiceResponse = twilio.twiml.VoiceResponse;
-    const response = new VoiceResponse();
+    const twiml = new VoiceResponse();
 
-    const to = req.body.To || req.body.to;
-    const callerId = process.env.TWILIO_CALLER_ID;
+    const to = req.body.To;
 
-    if (!callerId) {
-      response.say("Caller ID is not configured.");
-      return res.type("text/xml").send(response.toString());
+    if (!to) {
+      res.type("text/xml");
+      twiml.say("No destination number was provided.");
+      return res.send(twiml.toString());
     }
 
-    if (to) {
-      const dial = response.dial({ callerId });
-      dial.number(to);
-    } else {
-      response.say("Welcome to VoxDigits. Your system is working.");
-    }
+    const dial = twiml.dial({
+      callerId: TWILIO_CALLER_ID
+    });
 
-    return res.type("text/xml").send(response.toString());
-  } catch (err) {
-    console.error("VOICE ERROR:", err);
-    return res.status(500).type("text/plain").send("Voice route failed");
+    dial.number(to);
+
+    res.type("text/xml");
+    res.send(twiml.toString());
+  } catch (error) {
+    console.error("Voice error:", error);
+    res.status(500).send("Voice route error");
   }
 });
 
