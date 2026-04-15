@@ -16,7 +16,6 @@ app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
 
-// Keep BOTH routes so the dialer works whether it calls /generateToken or /api/twilio/token
 function buildTokenResponse(req, res) {
   try {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -40,10 +39,7 @@ function buildTokenResponse(req, res) {
     const AccessToken = twilio.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
-    const identity =
-      req.query.identity ||
-      req.query.user ||
-      "voxdigits_user";
+    const identity = req.query.identity || req.query.user || "voxdigits_user";
 
     const token = new AccessToken(accountSid, apiKey, apiSecret, {
       identity,
