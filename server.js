@@ -16,7 +16,8 @@ app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/twilio/token", (req, res) => {
+// Keep BOTH routes so the dialer works whether it calls /generateToken or /api/twilio/token
+function buildTokenResponse(req, res) {
   try {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const apiKey = process.env.TWILIO_API_KEY;
@@ -39,7 +40,10 @@ app.get("/api/twilio/token", (req, res) => {
     const AccessToken = twilio.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
-    const identity = req.query.identity || "voxdigits_user";
+    const identity =
+      req.query.identity ||
+      req.query.user ||
+      "voxdigits_user";
 
     const token = new AccessToken(accountSid, apiKey, apiSecret, {
       identity,
@@ -53,7 +57,6 @@ app.get("/api/twilio/token", (req, res) => {
     token.addGrant(voiceGrant);
 
     return res.json({
-      ok: true,
       identity,
       token: token.toJwt(),
     });
@@ -63,7 +66,10 @@ app.get("/api/twilio/token", (req, res) => {
       error: err.message || "Token generation failed",
     });
   }
-});
+}
+
+app.get("/generateToken", buildTokenResponse);
+app.get("/api/twilio/token", buildTokenResponse);
 
 app.post("/api/twilio/voice", (req, res) => {
   try {
@@ -95,5 +101,5 @@ app.post("/api/twilio/voice", (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(Server running on port ${PORT});
 });
