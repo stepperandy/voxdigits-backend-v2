@@ -1,7 +1,6 @@
 {
   "name": "voxdigits-backend-v2",
   "version": "1.0.0",
-  "description": "VoxDigits backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
