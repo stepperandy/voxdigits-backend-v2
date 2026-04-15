@@ -8,11 +8,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
-  res.send("VoxDigits backend is live");
+  res.status(200).send("VoxDigits backend is live");
 });
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(Server running on port ${PORT});
+  console.log("Server running on port " + PORT);
 });
