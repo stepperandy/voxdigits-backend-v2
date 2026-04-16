@@ -64,7 +64,7 @@ app.get("/generateToken", (req, res) => {
   }
 });
 
-// OUTBOUND: app -> real phone
+// OUTBOUND ONLY
 app.post("/voice", (req, res) => {
   try {
     console.log("VOICE ROUTE HIT");
@@ -73,7 +73,7 @@ app.post("/voice", (req, res) => {
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
 
-    const to = req.body.To || req.body.to;
+    const to = req.body.To || req.body.to || req.query.To || req.query.to;
     const callerId = process.env.TWILIO_CALLER_ID;
 
     console.log("TO:", to);
@@ -89,13 +89,15 @@ app.post("/voice", (req, res) => {
       return res.type("text/xml").send(twiml.toString());
     }
 
+    const cleanTo = String(to).trim();
+
     const dial = twiml.dial({
-      callerId,
+      callerId: callerId,
       answerOnBridge: true,
-      timeout: 25,
+      timeout: 30
     });
 
-    dial.number(to);
+    dial.number(cleanTo);
 
     return res.type("text/xml").send(twiml.toString());
   } catch (err) {
@@ -104,7 +106,7 @@ app.post("/voice", (req, res) => {
   }
 });
 
-// INBOUND: Twilio number -> app client
+// LEAVE INBOUND AS IS
 app.post("/incoming", (req, res) => {
   try {
     console.log("INCOMING ROUTE HIT");
