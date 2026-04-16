@@ -1,121 +1,59 @@
-const express = require("express");
-const cors = require("cors");
-const twilio = require("twilio");
+const express = require('express');
+const bodyParser = require('body-parser');
+const twilio = require('twilio');
 
 const app = express();
+app.use(bodyParser.json());
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-
-app.get("/", (req, res) => {
-  res.send("VOXDIGITS RENDER BACKEND OK");
+// Optional: allow your Replit frontend origin for CORS (replace with your origin)
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', 'https://your-replit-app.repl.co');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
 });
 
-app.get("/health", (req, res) => {
-  res.json({ ok: true });
-});
+const {
+  TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN,
+  TWILIO_NUMBER
+} = process.env;
 
-app.get("/generateToken", (req, res) => {
+if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_NUMBER) {
+  console.error('Missing TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN or TWILIO_NUMBER env vars');
+  process.exit(1);
+}
+
+const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+
+// Initiate outbound PSTN call
+app.post('/call-out', async (req, res) => {
+  const to = req.body && req.body.to;
+  if (!to) return res.status(400).json({ error: 'Missing "to" in request body. Use E.164 format, e.g. +14155551212' });
   try {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const apiKey = process.env.TWILIO_API_KEY;
-    const apiSecret = process.env.TWILIO_API_SECRET;
-    const appSid = process.env.TWIML_APP_SID;
-    const identity = process.env.TWILIO_CLIENT_IDENTITY || "voxdigits_user";
-
-    if (!accountSid) return res.status(500).json({ error: "Missing TWILIO_ACCOUNT_SID" });
-    if (!apiKey) return res.status(500).json({ error: "Missing TWILIO_API_KEY" });
-    if (!apiSecret) return res.status(500).json({ error: "Missing TWILIO_API_SECRET" });
-    if (!appSid) return res.status(500).json({ error: "Missing TWIML_APP_SID" });
-
-    const AccessToken = twilio.jwt.AccessToken;
-    const VoiceGrant = AccessToken.VoiceGrant;
-
-    const token = new AccessToken(accountSid, apiKey, apiSecret, { identity });
-
-    const voiceGrant = new VoiceGrant({
-      outgoingApplicationSid: appSid,
-      incomingAllow: true
+    const call = await client.calls.create({
+      to,
+      from: TWILIO_NUMBER,
+      // Public HTTPS TwiML handler that Twilio will request to get call instructions
+      url: ${process.env.PUBLIC_URL || 'https://api.voxdigits.com'}/twilio/voice-handler?connectTo=${encodeURIComponent(to)}
     });
-
-    token.addGrant(voiceGrant);
-
-    return res.json({
-      ok: true,
-      identity,
-      token: token.toJwt()
-    });
+    return res.json({ sid: call.sid, status: call.status });
   } catch (err) {
-    console.error("TOKEN ERROR:", err);
-    return res.status(500).json({ error: err.message || "Token generation failed" });
+    console.error('Twilio call create error:', err);
+    return res.status(500).json({ error: err.message });
   }
 });
 
-app.post("/voice", (req, res) => {
-  try {
-    console.log("VOICE ROUTE HIT");
-    console.log("BODY:", req.body);
-
-    const VoiceResponse = twilio.twiml.VoiceResponse;
-    const twiml = new VoiceResponse();
-
-    const to = req.body.To || req.body.to || req.query.To || req.query.to;
-    const callerId = process.env.TWILIO_CALLER_ID;
-
-    console.log("TO:", to);
-    console.log("CALLER ID:", callerId);
-
-    if (!callerId) {
-      twiml.say("Caller ID missing.");
-      return res.type("text/xml").send(twiml.toString());
-    }
-
-    if (!to) {
-      twiml.say("No destination number.");
-      return res.type("text/xml").send(twiml.toString());
-    }
-
-    const dial = twiml.dial({
-      callerId,
-      answerOnBridge: true,
-      timeout: 30
-    });
-
-    dial.number(String(to).trim());
-
-    return res.type("text/xml").send(twiml.toString());
-  } catch (err) {
-    console.error("VOICE ERROR:", err);
-    return res.status(500).type("text/plain").send("Voice route failed");
-  }
+// Twilio will request this when the outbound leg is answered.
+// Return TwiML instructing Twilio to dial the destination (or modify as needed).
+app.post('/twilio/voice-handler', (req, res) => {
+  const connectTo = req.query.connectTo || req.body.To || '';
+  res.type('text/xml');
+  // If you prefer to play audio or connect to a conference, change this TwiML.
+  res.send(<Response><Dial callerId="${TWILIO_NUMBER}">${connectTo}</Dial></Response>);
 });
 
-app.post("/incoming", (req, res) => {
-  try {
-    console.log("INCOMING ROUTE HIT");
-
-    const VoiceResponse = twilio.twiml.VoiceResponse;
-    const twiml = new VoiceResponse();
-
-    const identity = process.env.TWILIO_CLIENT_IDENTITY || "voxdigits_user";
-
-    const dial = twiml.dial({
-      answerOnBridge: true,
-      timeout: 25
-    });
-
-    dial.client(identity);
-
-    return res.type("text/xml").send(twiml.toString());
-  } catch (err) {
-    console.error("INCOMING ERROR:", err);
-    return res.status(500).type("text/plain").send("Incoming route failed");
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(Server listening on port ${port});
 });
