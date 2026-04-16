@@ -1,123 +1,146 @@
-const express = require('express');
-const twilio = require('twilio');
+const express = require("express");
+const cors = require("cors");
+const twilio = require("twilio");
 
 const app = express();
+
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// CORS: allow your Replit origin or '' for quick debugging
-const REPLIT_ORIGIN = process.env.REPLIT_ORIGIN || '';
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', REPLIT_ORIGIN);
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Twilio-Signature');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
+app.get("/", (req, res) => {
+  res.send("VOXDIGITS RENDER BACKEND OK");
 });
 
-// Required env vars
-const {
-  TWILIO_ACCOUNT_SID,
-  TWILIO_AUTH_TOKEN,
-  TWILIO_NUMBER,
-  PUBLIC_URL,
-  VERIFY_TWILIO = 'false' // set 'true' after debugging
-} = process.env;
+app.get("/health", (req, res) => {
+  res.json({ ok: true });
+});
 
-if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_NUMBER) {
-  console.error('Missing TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, or TWILIO_NUMBER');
-  process.exit(1);
-}
+app.get("/debug-env", (req, res) => {
+  res.json({
+    hasAccountSid: !!process.env.TWILIO_ACCOUNT_SID,
+    hasApiKey: !!process.env.TWILIO_API_KEY,
+    hasApiSecret: !!process.env.TWILIO_API_SECRET,
+    hasTwimlAppSid: !!process.env.TWIML_APP_SID,
+    hasCallerId: !!process.env.TWILIO_CALLER_ID,
+    hasClientIdentity: !!process.env.TWILIO_CLIENT_IDENTITY
+  });
+});
 
-const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-
-// Health
-app.get('/', (req, res) => res.send('VOXDIGITS RENDER BACKEND OK'));
-app.get('/health', (req, res) => res.json({ ok: true }));
-
-// Helper to validate Twilio signature (optional)
-function isValidTwilio(req) {
-  if (VERIFY_TWILIO === 'false') return true;
+app.get("/generateToken", (req, res) => {
   try {
-    const signature = req.headers['x-twilio-signature'] || '';
-    const url = (PUBLIC_URL || ${req.protocol}://${req.get('host')}) + req.originalUrl.split('?')[0];
-    return twilio.validateRequest(TWILIO_AUTH_TOKEN, signature, url, req.body);
-  } catch (e) {
-    console.error('Twilio validation exception', e);
-    return false;
-  }
-}
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const apiKey = process.env.TWILIO_API_KEY;
+    const apiSecret = process.env.TWILIO_API_SECRET;
+    const appSid = process.env.TWIML_APP_SID;
+    const identity = process.env.TWILIO_CLIENT_IDENTITY || "voxdigits_user";
 
-// TwiML handler for outbound calls
-app.all('/twilio/voice-handler', (req, res) => {
-  console.log('VOICE HANDLER hit', { method: req.method, query: req.query, body: req.body });
-  if (!isValidTwilio(req)) {
-    console.warn('Invalid Twilio signature on voice-handler (or verification disabled)');
-    // continue for debugging if VERIFY_TWILIO=false
-  }
-  const connectTo = req.query.connectTo || req.body.To || '';
-  const twiml = new twilio.twiml.VoiceResponse();
-  if (!connectTo) {
-    twiml.say('No destination provided. Goodbye.');
-  } else {
-    const dial = twiml.dial({ callerId: TWILIO_NUMBER });
-    dial.number(connectTo);
-  }
-  res.type('text/xml').send(twiml.toString());
-});
+    if (!accountSid) {
+      return res.status(500).json({ error: "Missing TWILIO_ACCOUNT_SID" });
+    }
+    if (!apiKey) {
+      return res.status(500).json({ error: "Missing TWILIO_API_KEY" });
+    }
+    if (!apiSecret) {
+      return res.status(500).json({ error: "Missing TWILIO_API_SECRET" });
+    }
+    if (!appSid) {
+      return res.status(500).json({ error: "Missing TWIML_APP_SID" });
+    }
 
-// Inbound webhook for your Twilio number (configure this in Twilio Console)
-app.post('/twilio/incoming', (req, res) => {
-  console.log('INCOMING webhook', req.body);
-  if (!isValidTwilio(req)) {
-    console.warn('Invalid Twilio signature on incoming');
-  }
-  const twiml = new twilio.twiml.VoiceResponse();
-  twiml.say('Thanks for calling VoxDigits. Goodbye.');
-  res.type('text/xml').send(twiml.toString());
-});
+    const AccessToken = twilio.jwt.AccessToken;
+    const VoiceGrant = AccessToken.VoiceGrant;
 
-// Create outbound call (production)
-app.post('/call-out', async (req, res) => {
-  const to = req.body && req.body.to;
-  if (!to) return res.status(400).json({ error: 'Missing "to" in body. Use E.164 format.' });
-  const host = (PUBLIC_URL || https://${req.get('host')}).replace(//$/, '');
-  const twimlUrl = ${host}/twilio/voice-handler?connectTo=${encodeURIComponent(to)};
-  console.log('Creating call', { to, from: TWILIO_NUMBER, twimlUrl });
-  try {
-    const call = await client.calls.create({ to, from: TWILIO_NUMBER, url: twimlUrl, timeout: 30 });
-    console.log('Call created', call.sid);
-    return res.json({ sid: call.sid, status: call.status });
-  } catch (err) {
-    console.error('Call create error', err);
-    return res.status(500).json({ errorName: err.name, errorCode: err.code || null, message: err.message });
-  }
-});
-
-// Test-call: returns full Twilio error info for debugging
-app.post('/test-call', async (req, res) => {
-  const to = req.body && req.body.to;
-  if (!to) return res.status(400).json({ error: 'Provide JSON body { "to": "+1..." }' });
-  const host = (PUBLIC_URL || https://${req.get('host')}).replace(//$/, '');
-  try {
-    const call = await client.calls.create({
-      to,
-      from: TWILIO_NUMBER,
-      url: ${host}/twilio/voice-handler?connectTo=${encodeURIComponent(to)},
-      timeout: 20
+    const token = new AccessToken(accountSid, apiKey, apiSecret, {
+      identity
     });
-    console.log('Test call created', call.sid);
-    return res.json({ sid: call.sid, status: call.status });
+
+    const voiceGrant = new VoiceGrant({
+      outgoingApplicationSid: appSid,
+      incomingAllow: true
+    });
+
+    token.addGrant(voiceGrant);
+
+    return res.json({
+      ok: true,
+      identity,
+      token: token.toJwt()
+    });
   } catch (err) {
-    console.error('Test-call error', JSON.stringify(err, Object.getOwnPropertyNames(err)));
+    console.error("TOKEN ERROR:", err);
     return res.status(500).json({
-      message: 'Twilio create call failed',
-      errorName: err.name,
-      errorCode: err.code || null,
-      errorMessage: err.message,
-      more: err.more || null
+      error: err.message || "Token generation failed"
     });
   }
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(Server listening on ${port}));
+// OUTBOUND: app -> real phone number
+app.post("/voice", (req, res) => {
+  try {
+    console.log("VOICE ROUTE HIT");
+    console.log("BODY:", req.body);
+
+    const VoiceResponse = twilio.twiml.VoiceResponse;
+    const twiml = new VoiceResponse();
+
+    const to = req.body.To || req.body.to || req.query.To || req.query.to;
+    const callerId = process.env.TWILIO_CALLER_ID;
+
+    console.log("TO:", to);
+    console.log("CALLER ID:", callerId);
+
+    if (!callerId) {
+      twiml.say("Caller ID missing.");
+      return res.type("text/xml").send(twiml.toString());
+    }
+
+    if (!to) {
+      twiml.say("No destination number.");
+      return res.type("text/xml").send(twiml.toString());
+    }
+
+    const dial = twiml.dial({
+      callerId,
+      answerOnBridge: true,
+      timeout: 30
+    });
+
+    dial.number(String(to).trim());
+
+    return res.type("text/xml").send(twiml.toString());
+  } catch (err) {
+    console.error("VOICE ERROR:", err);
+    return res.status(500).type("text/plain").send("Voice route failed");
+  }
+});
+
+// INBOUND: real phone -> app client
+app.post("/incoming", (req, res) => {
+  try {
+    console.log("INCOMING ROUTE HIT");
+
+    const VoiceResponse = twilio.twiml.VoiceResponse;
+    const twiml = new VoiceResponse();
+
+    const identity = process.env.TWILIO_CLIENT_IDENTITY || "voxdigits_user";
+
+    const dial = twiml.dial({
+      answerOnBridge: true,
+      timeout: 25
+    });
+
+    dial.client(identity);
+
+    return res.type("text/xml").send(twiml.toString());
+  } catch (err) {
+    console.error("INCOMING ERROR:", err);
+    return res.status(500).type("text/plain").send("Incoming route failed");
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("Server running on port " + PORT);
+});
