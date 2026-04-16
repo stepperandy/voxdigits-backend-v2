@@ -1,4 +1,4 @@
-[13:02, 4/16/2026] Andre: const express = require("express");
+const express = require("express");
 const cors = require("cors");
 const twilio = require("twilio");
 
@@ -16,7 +16,6 @@ app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
 
-// TOKEN FOR DIALER
 app.get("/generateToken", (req, res) => {
   try {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -25,54 +24,15 @@ app.get("/generateToken", (req, res) => {
     const appSid = process.env.TWIML_APP_SID;
     const identity = process.env.TWILIO_CLIENT_IDENTITY || "voxdigits_user";
 
-    if (!accountSid) {
-      return res.status(500).json({…
-[13:03, 4/16/2026] Andre: const express = require("express");
-const cors = require("cors");
-const twilio = require("twilio");
-
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-
-app.get("/", (req, res) => {
-  res.send("VOXDIGITS RENDER BACKEND OK");
-});
-
-app.get("/health", (req, res) => {
-  res.json({ ok: true });
-});
-
-// TOKEN FOR DIALER
-app.get("/generateToken", (req, res) => {
-  try {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const apiKey = process.env.TWILIO_API_KEY;
-    const apiSecret = process.env.TWILIO_API_SECRET;
-    const appSid = process.env.TWIML_APP_SID;
-    const identity = process.env.TWILIO_CLIENT_IDENTITY || "voxdigits_user";
-
-    if (!accountSid) {
-      return res.status(500).json({ error: "Missing TWILIO_ACCOUNT_SID" });
-    }
-    if (!apiKey) {
-      return res.status(500).json({ error: "Missing TWILIO_API_KEY" });
-    }
-    if (!apiSecret) {
-      return res.status(500).json({ error: "Missing TWILIO_API_SECRET" });
-    }
-    if (!appSid) {
-      return res.status(500).json({ error: "Missing TWIML_APP_SID" });
-    }
+    if (!accountSid) return res.status(500).json({ error: "Missing TWILIO_ACCOUNT_SID" });
+    if (!apiKey) return res.status(500).json({ error: "Missing TWILIO_API_KEY" });
+    if (!apiSecret) return res.status(500).json({ error: "Missing TWILIO_API_SECRET" });
+    if (!appSid) return res.status(500).json({ error: "Missing TWIML_APP_SID" });
 
     const AccessToken = twilio.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
-    const token = new AccessToken(accountSid, apiKey, apiSecret, {
-      identity
-    });
+    const token = new AccessToken(accountSid, apiKey, apiSecret, { identity });
 
     const voiceGrant = new VoiceGrant({
       outgoingApplicationSid: appSid,
@@ -88,13 +48,10 @@ app.get("/generateToken", (req, res) => {
     });
   } catch (err) {
     console.error("TOKEN ERROR:", err);
-    return res.status(500).json({
-      error: err.message || "Token generation failed"
-    });
+    return res.status(500).json({ error: err.message || "Token generation failed" });
   }
 });
 
-// OUTBOUND: APP -> REAL PHONE
 app.post("/voice", (req, res) => {
   try {
     console.log("VOICE ROUTE HIT");
@@ -119,15 +76,13 @@ app.post("/voice", (req, res) => {
       return res.type("text/xml").send(twiml.toString());
     }
 
-    const cleanTo = String(to).trim();
-
     const dial = twiml.dial({
-      callerId: callerId,
+      callerId,
       answerOnBridge: true,
       timeout: 30
     });
 
-    dial.number(cleanTo);
+    dial.number(String(to).trim());
 
     return res.type("text/xml").send(twiml.toString());
   } catch (err) {
@@ -136,18 +91,14 @@ app.post("/voice", (req, res) => {
   }
 });
 
-// INBOUND: REAL PHONE -> APP
 app.post("/incoming", (req, res) => {
   try {
     console.log("INCOMING ROUTE HIT");
-    console.log("INCOMING BODY:", req.body);
 
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
 
     const identity = process.env.TWILIO_CLIENT_IDENTITY || "voxdigits_user";
-
-    console.log("INCOMING IDENTITY:", identity);
 
     const dial = twiml.dial({
       answerOnBridge: true,
