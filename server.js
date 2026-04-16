@@ -28,8 +28,7 @@ app.get("/generateToken", (req, res) => {
 
     const AccessToken = twilio.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
-
-    const identity = req.query.identity || "user_" + Date.now();
+    const identity = req.query.identity || ("user_" + Date.now());
 
     const token = new AccessToken(
       TWILIO_ACCOUNT_SID,
@@ -38,12 +37,10 @@ app.get("/generateToken", (req, res) => {
       { identity }
     );
 
-    const voiceGrant = new VoiceGrant({
+    token.addGrant(new VoiceGrant({
       outgoingApplicationSid: TWIML_APP_SID,
       incomingAllow: true
-    });
-
-    token.addGrant(voiceGrant);
+    }));
 
     res.json({ token: token.toJwt(), identity });
   } catch (err) {
@@ -54,8 +51,7 @@ app.get("/generateToken", (req, res) => {
 
 app.all("/voice", (req, res) => {
   try {
-    const VoiceResponse = twilio.twiml.VoiceResponse;
-    const twiml = new VoiceResponse();
+    const twiml = new twilio.twiml.VoiceResponse();
 
     const to =
       req.body.To ||
@@ -93,7 +89,6 @@ app.all("/voice", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
