@@ -29,11 +29,13 @@ app.get("/generateToken", (req, res) => {
     const AccessToken = twilio.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
+    const identity = req.query.identity || "user_" + Date.now();
+
     const token = new AccessToken(
       TWILIO_ACCOUNT_SID,
       TWILIO_API_KEY,
       TWILIO_API_SECRET,
-      { identity: "user_" + Date.now() }
+      { identity }
     );
 
     const voiceGrant = new VoiceGrant({
@@ -43,36 +45,49 @@ app.get("/generateToken", (req, res) => {
 
     token.addGrant(voiceGrant);
 
-    res.json({ token: token.toJwt() });
+    res.json({ token: token.toJwt(), identity });
   } catch (err) {
-    console.error(err);
+    console.error("Token error:", err);
     res.status(500).json({ error: "Token generation failed" });
   }
 });
 
-app.post("/voice", (req, res) => {
+app.all("/voice", (req, res) => {
   try {
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
 
-    const to = req.body.To;
+    const to =
+      req.body.To ||
+      req.query.To ||
+      req.body.to ||
+      req.query.to ||
+      req.body.number ||
+      req.query.number;
+
+    console.log("VOICE ROUTE HIT");
+    console.log("Method:", req.method);
+    console.log("Body:", req.body);
+    console.log("Query:", req.query);
+    console.log("Resolved To:", to);
 
     if (!to) {
-      twiml.say("No number provided");
+      twiml.say("No destination number was provided.");
       res.type("text/xml");
       return res.send(twiml.toString());
     }
 
     const dial = twiml.dial({
-      callerId: TWILIO_CALLER_ID
+      callerId: TWILIO_CALLER_ID,
+      answerOnBridge: true
     });
 
     dial.number(to);
 
     res.type("text/xml");
-    res.send(twiml.toString());
+    return res.send(twiml.toString());
   } catch (err) {
-    console.error(err);
+    console.error("Voice error:", err);
     res.status(500).send("Voice error");
   }
 });
@@ -81,4 +96,4 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
-})
+});
