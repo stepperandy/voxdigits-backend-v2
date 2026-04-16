@@ -18,7 +18,6 @@ const {
   TWILIO_CALLER_ID
 } = process.env;
 
-// Fixed client identity for your browser/app
 const CLIENT_IDENTITY = "voxdigits_user";
 
 function getMissingEnvVars() {
@@ -31,7 +30,6 @@ function getMissingEnvVars() {
   return missing;
 }
 
-// Health check
 app.get("/", (req, res) => {
   res.status(200).json({
     ok: true,
@@ -40,7 +38,6 @@ app.get("/", (req, res) => {
   });
 });
 
-// Generate Twilio Voice SDK token for the browser/app
 app.get("/generateToken", (req, res) => {
   try {
     const missing = getMissingEnvVars();
@@ -55,7 +52,6 @@ app.get("/generateToken", (req, res) => {
     const AccessToken = twilio.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
-    // Always use the same identity so inbound can target the same browser client
     const token = new AccessToken(
       TWILIO_ACCOUNT_SID,
       TWILIO_API_KEY,
@@ -85,10 +81,6 @@ app.get("/generateToken", (req, res) => {
   }
 });
 
-// Twilio voice webhook
-// Logic:
-// - If Twilio sends a dial target like To=+233..., treat as outbound and dial that number
-// - Otherwise, treat as inbound PSTN call and ring the browser client "voxdigits_user"
 app.all("/voice", (req, res) => {
   try {
     const twiml = new twilio.twiml.VoiceResponse();
@@ -113,11 +105,9 @@ app.all("/voice", (req, res) => {
       answerOnBridge: true
     });
 
-    // Outbound: browser/app is calling a real phone number
     if (to && String(to).startsWith("+")) {
       dial.number(to);
     } else {
-      // Inbound: PSTN call to your Twilio number should ring the browser/app client
       dial.client(CLIENT_IDENTITY);
     }
 
@@ -129,10 +119,18 @@ app.all("/voice", (req, res) => {
   }
 });
 
-// Optional status callback endpoint so Twilio does not hit a dead URL
-app.post("/status", (req, res) => {
-  console.log("STATUS CALLBACK:", req.body);
-  res.sendStatus(200);
+app.all("/status", (req, res) => {
+  console.log("STATUS CALLBACK:", {
+    method: req.method,
+    body: req.body,
+    query: req.query
+  });
+
+  if (req.method === "GET") {
+    return res.status(200).send("Status endpoint is live");
+  }
+
+  return res.sendStatus(200);
 });
 
 app.listen(PORT, () => {
